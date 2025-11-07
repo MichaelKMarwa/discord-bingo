@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom List Bingo</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        body { font-family: "Inter", sans-serif; }
+
+        /* Custom CSS for the diagonal strike-through effect */
+        .bingo-square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 1rem;
+            min-height: 100px;
+            cursor: pointer;
+            transition: transform 0.1s ease, background-color 0.2s;
+            position: relative;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .bingo-square:hover:not(.is-free):not(.is-clicked) {
+            background-color: #f3f4f6;
+        }
+
+        /* Styling for the clicked state (the diagonal line) */
+        .is-clicked::before,
+        .is-clicked::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 4px; /* Thickness of the line */
+            background-color: #ef4444; /* Red line color */
+            transform: translateY(-50%) rotate(45deg);
+            opacity: 1;
+            transition: opacity 0.3s;
+            z-index: 10;
+        }
+
+        .is-clicked::after {
+            transform: translateY(-50%) rotate(-45deg);
+        }
+
+        /* Animation for the win state */
+        .bingo-win-square {
+            animation: win-flash 0.5s infinite alternate;
+        }
+
+        @keyframes win-flash {
+            from { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); background-color: #fee2e2; }
+            to { box-shadow: 0 0 25px rgba(239, 68, 68, 1); background-color: #fecaca; }
+        }
+
+        /* Ensure grid cells stack nicely on small screens */
+        @media (max-width: 640px) {
+            .bingo-square {
+                padding: 0.5rem;
+                min-height: 80px;
+                font-size: 0.875rem; /* text-sm */
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <!-- Header -->
+    <header class="bg-blue-600 text-white p-6 rounded-t-xl shadow-lg">
+        <h1 class="text-4xl font-extrabold tracking-widest text-center">CUSTOM BINGO</h1>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-4">
+
+        <!-- Left Panel: Controls and Input -->
+        <section class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit">
+            <h2 class="text-2xl font-semibold mb-4 text-blue-800">1. Setup Your Options</h2>
+            <p class="text-sm text-gray-600 mb-3">Paste a list of items below. We need **at least 24** items to fill the 5x5 board (one square is the Free Space).</p>
+
+            <textarea id="optionsInput" rows="10" placeholder="Paste your list here, with each item on a new line (e.g.,
+Anime PFP
+Server Hoppers
+Food asmr
+..." class="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-sm"></textarea>
+
+            <button onclick="loadOptions()" class="mt-4 w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200">
+                Generate Board
+            </button>
+
+            <div id="statusMessage" class="mt-4 p-3 rounded-lg text-center font-medium hidden"></div>
+
+            <div class="mt-8 pt-4 border-t border-gray-200">
+                <h2 class="text-2xl font-semibold mb-3 text-blue-800">2. Game Status</h2>
+                <div id="bingoMessage" class="text-center p-4 bg-yellow-100 text-yellow-800 font-bold rounded-lg shadow-inner text-xl hidden">
+                    BINGO!
+                </div>
+                <button onclick="resetBoard()" class="mt-4 w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition duration-200">
+                    Reset Board
+                </button>
+            </div>
+        </section>
+
+        <!-- Right Panel: Bingo Board -->
+        <section class="lg:col-span-2 bg-white p-4 rounded-xl shadow-lg">
+            <div id="bingoGrid" class="grid grid-cols-5 border-4 border-blue-600 rounded-lg overflow-hidden">
+                <!-- Bingo squares will be dynamically inserted here -->
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const GRID_SIZE = 5;
+        const FREE_SPACE_INDEX = Math.floor(GRID_SIZE * GRID_SIZE / 2); // 12 for 5x5
+        let clickedState = new Array(GRID_SIZE * GRID_SIZE).fill(false);
+        let currentOptions = [];
+        const statusMessage = document.getElementById('statusMessage');
+        const bingoGrid = document.getElementById('bingoGrid');
+        const bingoMessage = document.getElementById('bingoMessage');
+
+        /**
+         * Shuffles an array in place using the Fisher-Yates algorithm.
+         * @param {Array} array The array to shuffle.
+         * @returns {Array} The shuffled array.
+         */
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        /**
+         * Updates the status message visible to the user.
+         * @param {string} message The text message.
+         * @param {string} type 'success' or 'error' to determine colors.
+         */
+        function updateStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.classList.remove('hidden', 'bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800');
+
+            if (type === 'error') {
+                statusMessage.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                statusMessage.classList.add('bg-green-100', 'text-green-800');
+            }
+        }
+
+        /**
+         * Reads input, shuffles, and generates the Bingo board.
+         */
+        function loadOptions() {
+            const inputElement = document.getElementById('optionsInput');
+            const rawOptions = inputElement.value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+            
+            if (rawOptions.length < GRID_SIZE * GRID_SIZE - 1) {
+                updateStatus(`Error: You only provided ${rawOptions.length} unique options. You need at least ${GRID_SIZE * GRID_SIZE - 1} (24) options.`, 'error');
+                return;
+            }
+
+            // Ensure we only take enough unique, shuffled options to fill the board (24)
+            currentOptions = shuffleArray(Array.from(new Set(rawOptions))).slice(0, GRID_SIZE * GRID_SIZE - 1);
+
+            initializeBoard(currentOptions);
+            updateStatus('Board successfully generated! Start clicking to play.', 'success');
+        }
+
+        /**
+         * Initializes the board structure and populates it with options.
+         * @param {Array<string>} options The 24 options for the board.
+         */
+        function initializeBoard(options) {
+            bingoGrid.innerHTML = '';
+            clickedState.fill(false);
+            bingoMessage.classList.add('hidden');
+
+            let optionIndex = 0;
+            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                const square = document.createElement('div');
+                square.className = 'bingo-square bg-white border border-blue-200 text-gray-800 font-semibold text-center transition-all duration-300';
+                square.dataset.index = i;
+                square.onclick = () => toggleSquare(i);
+                
+                let content;
+                if (i === FREE_SPACE_INDEX) {
+                    content = 'Free space!';
+                    square.classList.add('is-free', 'bg-orange-400', 'hover:bg-orange-500', 'text-white');
+                    // Free space is automatically clicked/marked
+                    clickedState[i] = true;
+                    square.classList.add('is-clicked');
+                } else {
+                    content = options[optionIndex];
+                    optionIndex++;
+                }
+
+                square.textContent = content;
+                bingoGrid.appendChild(square);
+            }
+        }
+
+        /**
+         * Toggles the clicked state of a square.
+         * @param {number} index The index of the square being clicked.
+         */
+        function toggleSquare(index) {
+            // Prevent marking if the board is empty or the game is already won
+            if (currentOptions.length === 0) return;
+            if (bingoMessage.classList.contains('bg-red-500')) return; // Game won
+
+            const square = bingoGrid.children[index];
+
+            // Ignore clicks on the free space if it's already marked (default behavior)
+            if (index === FREE_SPACE_INDEX && clickedState[index]) return;
+
+            clickedState[index] = !clickedState[index];
+
+            if (clickedState[index]) {
+                square.classList.add('is-clicked');
+            } else {
+                square.classList.remove('is-clicked');
+                // Remove win styling if user unmarks a tile
+                Array.from(bingoGrid.children).forEach(s => s.classList.remove('bingo-win-square'));
+                bingoMessage.classList.add('hidden');
+            }
+            
+            checkForBingo();
+        }
+
+        /**
+         * Checks the board for any winning condition (row, column, diagonal).
+         */
+        function checkForBingo() {
+            const size = GRID_SIZE;
+            const winningLines = [];
+
+            // 1. Check Rows
+            for (let r = 0; r < size; r++) {
+                let row = [];
+                for (let c = 0; c < size; c++) {
+                    row.push(r * size + c);
+                }
+                winningLines.push(row);
+            }
+
+            // 2. Check Columns
+            for (let c = 0; c < size; c++) {
+                let col = [];
+                for (let r = 0; r < size; r++) {
+                    col.push(r * size + c);
+                }
+                winningLines.push(col);
+            }
+
+            // 3. Check Diagonals
+            let diag1 = []; // Top-Left to Bottom-Right
+            let diag2 = []; // Top-Right to Bottom-Left
+            for (let i = 0; i < size; i++) {
+                diag1.push(i * size + i);
+                diag2.push(i * size + (size - 1 - i));
+            }
+            winningLines.push(diag1, diag2);
+
+            let hasBingo = false;
+            let winningSquares = [];
+
+            for (const line of winningLines) {
+                const isWin = line.every(index => clickedState[index]);
+                if (isWin) {
+                    hasBingo = true;
+                    winningSquares = line;
+                    break;
+                }
+            }
+
+            if (hasBingo) {
+                // Display the win message
+                bingoMessage.textContent = 'BINGO!';
+                bingoMessage.classList.remove('hidden', 'bg-yellow-100', 'text-yellow-800');
+                bingoMessage.classList.add('bg-red-500', 'text-white', 'shadow-2xl');
+
+                // Apply win animation to winning squares
+                winningSquares.forEach(index => {
+                    if (bingoGrid.children[index]) {
+                        bingoGrid.children[index].classList.add('bingo-win-square');
+                    }
+                });
+            } else {
+                // Reset the board styling and message if it was a false alarm or reset
+                bingoMessage.classList.add('hidden', 'bg-red-500', 'text-white', 'shadow-2xl');
+                bingoMessage.classList.remove('bg-yellow-100', 'text-yellow-800');
+                Array.from(bingoGrid.children).forEach(s => s.classList.remove('bingo-win-square'));
+            }
+        }
+
+        /**
+         * Clears the board and resets game state.
+         */
+        function resetBoard() {
+            bingoGrid.innerHTML = '';
+            clickedState.fill(false);
+            currentOptions = [];
+            bingoMessage.classList.add('hidden');
+            bingoMessage.classList.remove('bg-red-500', 'text-white', 'shadow-2xl');
+            bingoMessage.classList.add('bg-yellow-100', 'text-yellow-800');
+            statusMessage.classList.add('hidden');
+        }
+
+        // Initialize empty board grid structure on load
+        window.onload = () => {
+             for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
+                const square = document.createElement('div');
+                square.className = 'bingo-square bg-gray-200 border border-gray-300 text-gray-500 font-medium';
+                square.textContent = (i === FREE_SPACE_INDEX) ? 'Free Space Placeholder' : 'Awaiting List...';
+                bingoGrid.appendChild(square);
+            }
+        };
+    </script>
+</body>
+</html>
