@@ -73,7 +73,7 @@
 
     <!-- Header -->
     <header class="bg-blue-600 text-white p-6 rounded-t-xl shadow-lg">
-        <h1 class="text-4xl font-extrabold tracking-widest text-center">CUSTOM BINGO</h1>
+        <h1 class="text-4xl font-extrabold tracking-widest text-center">DEGEN BINGO</h1>
     </header>
 
     <!-- Main Content Grid -->
@@ -216,11 +216,13 @@ Food asmr
 
             const square = bingoGrid.children[index];
 
-            // Ignore clicks on the free space if it's already marked (default behavior)
-            if (index === FREE_SPACE_INDEX && clickedState[index]) return;
+            // Don't allow clicking the free space
+            if (index === FREE_SPACE_INDEX) return;
 
+            // Toggle the clicked state
             clickedState[index] = !clickedState[index];
 
+            // Update visual state
             if (clickedState[index]) {
                 square.classList.add('is-clicked');
             } else {
@@ -293,8 +295,9 @@ Food asmr
                 });
             } else {
                 // Reset the board styling and message if it was a false alarm or reset
-                bingoMessage.classList.add('hidden', 'bg-red-500', 'text-white', 'shadow-2xl');
-                bingoMessage.classList.remove('bg-yellow-100', 'text-yellow-800');
+                // Only hide the message and remove any win-related classes (don't add bg-red-500 here)
+                bingoMessage.classList.add('hidden');
+                bingoMessage.classList.remove('bg-red-500', 'text-white', 'shadow-2xl', 'bg-yellow-100', 'text-yellow-800');
                 Array.from(bingoGrid.children).forEach(s => s.classList.remove('bingo-win-square'));
             }
         }
